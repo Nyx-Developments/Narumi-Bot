@@ -1,0 +1,65 @@
+image: registry.gitlab.com/natsukagami/docker-fsharp:netcore
+
+before_script:
+  - sed -i 's/<Import Project="fsc.props" \/>//' */*.fsproj
+
+stages:
+  - build
+  - test
+  - build-image
+  - deploy
+
+build:
+  stage: build
+  script:
+    - dotnet build
+
+test-framework:
+  stage: test
+  script:
+    - dotnet test Narumi.Framework.Tests
+
+test-bot:
+  stage: test
+  script:
+    - dotnet test Narumi.Bot.Tests
+
+docker-build:
+  stage: build-image
+  image: docker:stable
+  variables:
+    IMAGE_NAME: registry.gitlab.com/natsukagami/narumi-bot
+  before_script:
+    - docker info
+  tags:
+    - image
+  only:
+    - master
+    - tags
+  script:
+    # Login to gitlab registry
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
+    # Build
+    - docker build -t $IMAGE_NAME:latest .
+    # Publish
+    - docker push $IMAGE_NAME:latest
+
+docker-tagged-release:
+  stage: deploy
+  image: docker:stable
+  variables:
+    IMAGE_NAME: registry.gitlab.com/natsukagami/narumi-bot
+  before_script:
+    - docker info
+  tags:
+    - image
+  only:
+    - tags
+  script:
+    # Login to gitlab registry
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
+    # Pull and re-tag
+    - docker pull $IMAGE_NAME:latest
+    - docker tag $IMAGE_NAME:latest $IMAGE_NAME:$CI_COMMIT_TAG
+    # Publish
+    - docker push $IMAGE_NAME:$CI_COMMIT_TAG
